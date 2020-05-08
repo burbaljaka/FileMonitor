@@ -1,0 +1,61 @@
+version: '3.7'
+
+services:
+    database:
+        restart: always
+        image: postgres:latest
+        volumes:
+            - pgdata:/var/lib/postgresql/data/
+        environment:
+            POSTGRES_USER: django
+            POSTGRES_PASSWORD: django
+
+    redis:
+        image: redis:6.0-rc3-alpine
+        container_name: redis
+        command: ["redis-server", "--appendonly", "yes"]
+        hostname: redis
+        restart: always
+
+    api:
+        build: ./fmonitor
+        command: bash -c "python manage.py migrate && python manage.py createcachetable && python manage.py runserver 0.0.0.0:8000"
+        volumes:
+            - ./fmonitor:/django
+        ports:
+            - "8000:8000"
+        depends_on:
+            - database
+        links:
+            - database
+            - redis
+        environment:
+            DEBUG: "true"
+            DATABASE_NAME: django
+            DATABASE_USER: django
+            DATABASE_PASSWORD: django
+            DATABASE_SERVICE_HOST: database
+    celery:
+        build: ./fmonitor
+        command: celery -A fmonitor worker -B -l info
+        volumes:
+            - ./fmonitor:/django
+        links:
+            - api
+            - redis
+            - database
+
+#    frontend:
+#        build: ./fmonitor/frontend
+#        volumes:
+#          - ./fmonitor/frontend:/app
+#          # One-way volume to use node_modules from inside image
+#          - /app/node_modules
+#        ports:
+#          - "3000:3000"
+#        depends_on:
+#          - api
+#        command: bash -c "npm start"
+
+volumes:
+    pgdata:
